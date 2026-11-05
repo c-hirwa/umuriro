@@ -2,7 +2,7 @@
 
 import { rwf } from "@/lib/data";
 import type { DB } from "@/lib/store";
-import { H1, clock, isToday } from "./util";
+import { H1, clock, isToday, orderWhere } from "./util";
 
 export function Overview({ db, onGo }: { db: DB; onGo: (t: "orders" | "reservations") => void }) {
   const today = db.orders.filter((o) => isToday(o.createdAt));
@@ -22,13 +22,14 @@ export function Overview({ db, onGo }: { db: DB; onGo: (t: "orders" | "reservati
   const maxD = Math.max(1, ...top.map((t) => t[1]));
 
   const dineIn = valid.filter((o) => o.type === "dine-in").length;
+  const delivery = valid.filter((o) => o.type === "delivery").length;
 
   return (
     <>
       <H1 aside={<p className="text-ash">{todayStr}</p>}>Today</H1>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Sales" value={rwf(revenue)} />
-        <Stat label="Orders" value={String(valid.length)} sub={`${dineIn} at tables, ${valid.length - dineIn} takeaway`} />
+        <Stat label="Orders" value={String(valid.length)} sub={`${dineIn} tables, ${valid.length - dineIn - delivery} pickup, ${delivery} delivery`} />
         <Stat label="Average order" value={rwf(valid.length ? Math.round(revenue / valid.length / 100) * 100 : 0)} />
         <button onClick={() => onGo("orders")} className="rounded-2xl bg-ember p-4 text-left text-white hover:bg-ember-deep">
           <p className="text-sm font-semibold text-white/85">Open orders</p>
@@ -77,7 +78,7 @@ export function Overview({ db, onGo }: { db: DB; onGo: (t: "orders" | "reservati
               <li key={o.id} className="flex items-center gap-3 py-2.5 text-sm">
                 <span className="w-12 font-bold tabular-nums">#{o.id}</span>
                 <span className="w-12 tabular-nums text-ash">{clock(o.createdAt)}</span>
-                <span className="flex-1 truncate">{o.table ? `Table ${o.table}` : `${o.name}, takeaway`}</span>
+                <span className="flex-1 truncate">{orderWhere(o)}</span>
                 <StatusPill s={o.status} />
                 <span className="w-24 text-right tabular-nums">{rwf(o.total)}</span>
               </li>
@@ -94,6 +95,7 @@ export function Overview({ db, onGo }: { db: DB; onGo: (t: "orders" | "reservati
               {db.reservations.filter((r) => r.status === "pending").map((r) => (
                 <li key={r.id} className="flex gap-3 py-2.5 text-sm">
                   <span className="font-bold">{r.name}</span>
+                  {r.kind && r.kind !== "table" && <span className="rounded-full bg-ochre/30 px-2 text-xs font-bold leading-5">{r.kind === "private" ? "Private event" : r.kind === "event" ? r.event : "Brunch"}</span>}
                   <span className="text-ash">{r.guests} people, {r.date.slice(5).split("-").reverse().join("/")} at {r.time}</span>
                 </li>
               ))}

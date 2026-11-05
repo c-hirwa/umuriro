@@ -11,21 +11,38 @@ import { ALL_DISHES, dishById } from "./data";
 
 export type OrderStatus = "new" | "preparing" | "ready" | "done" | "cancelled";
 export type OrderLine = { dishId: string; name: string; price: number; qty: number; options?: string; note?: string };
+export type OrderType = "dine-in" | "takeaway" | "delivery";
+export type Payment = "momo" | "card" | "cash";
 export type Order = {
   id: number;
   createdAt: number;
-  type: "dine-in" | "takeaway";
+  type: OrderType;
+  /** where the order came from: a table QR code or the online ordering page */
+  channel?: "table" | "online";
   table?: string;
   name?: string;
   phone?: string;
+  address?: string;
+  zone?: string;
+  /** "asap" or a time like "19:30" */
+  when?: string;
+  payment?: Payment;
+  note?: string;
   lines: OrderLine[];
+  /** delivery fee, already included in total */
+  fee?: number;
   total: number;
   status: OrderStatus;
 };
 export type ReservationStatus = "pending" | "confirmed" | "declined";
+export type ReservationKind = "table" | "brunch" | "event" | "private";
 export type Reservation = {
   id: number;
   createdAt: number;
+  /** missing on older demo data, which means "table" */
+  kind?: ReservationKind;
+  /** event title for event RSVPs, occasion for private events */
+  event?: string;
   name: string;
   phone: string;
   date: string;
@@ -36,7 +53,7 @@ export type Reservation = {
 };
 export type DB = { orders: Order[]; reservations: Reservation[]; soldOut: string[] };
 
-const KEY = "umuriro:demo:v1";
+const KEY = "umuriro:demo:v2";
 const EVT = "umuriro:change";
 let cache: DB | null = null;
 let cacheRaw: string | null = null;
@@ -87,7 +104,7 @@ const nextId = (xs: { id: number }[], start: number) => xs.reduce((m, x) => Math
 export function placeOrder(o: Omit<Order, "id" | "createdAt" | "status" | "total">): Order {
   let created!: Order;
   update((db) => {
-    const total = o.lines.reduce((s, l) => s + l.price * l.qty, 0);
+    const total = o.lines.reduce((s, l) => s + l.price * l.qty, 0) + (o.fee ?? 0);
     created = { ...o, id: nextId(db.orders, 1040), createdAt: Date.now(), status: "new", total };
     return { ...db, orders: [created, ...db.orders] };
   });
@@ -98,11 +115,13 @@ export function setOrderStatus(id: number, status: OrderStatus) {
   update((db) => ({ ...db, orders: db.orders.map((o) => (o.id === id ? { ...o, status } : o)) }));
 }
 
-export function addReservation(r: Omit<Reservation, "id" | "createdAt" | "status">) {
-  update((db) => ({
-    ...db,
-    reservations: [{ ...r, id: nextId(db.reservations, 200), createdAt: Date.now(), status: "pending" }, ...db.reservations],
-  }));
+export function addReservation(r: Omit<Reservation, "id" | "createdAt" | "status">): Reservation {
+  let created!: Reservation;
+  update((db) => {
+    created = { ...r, id: nextId(db.reservations, 200), createdAt: Date.now(), status: "pending" };
+    return { ...db, reservations: [created, ...db.reservations] };
+  });
+  return created;
 }
 
 export function setReservationStatus(id: number, status: ReservationStatus) {
@@ -154,15 +173,24 @@ function seed(): DB {
     const fromEnd = baskets.length - 1 - i;
     const status: OrderStatus = fromEnd === 0 ? "new" : fromEnd === 1 ? "new" : fromEnd === 2 ? "preparing" : fromEnd === 3 ? "ready" : i === 4 ? "cancelled" : "done";
     const takeaway = i % 4 === 2;
+    const delivery = i % 5 === 3;
+    const fee = delivery ? 1500 : 0;
+    const online = takeaway || delivery;
     return {
       id: 1040 - baskets.length + i + 1,
       createdAt: Math.min(t, now.getTime() - (fromEnd + 1) * 60_000),
-      type: takeaway ? "takeaway" : "dine-in",
-      table: takeaway ? undefined : String(((i * 5) % 12) + 1),
-      name: takeaway ? pick(names, i) : undefined,
-      phone: takeaway ? "0788 000 000" : undefined,
+      type: delivery ? "delivery" : takeaway ? "takeaway" : "dine-in",
+      channel: online ? "online" : "table",
+      table: online ? undefined : String(((i * 5) % 12) + 1),
+      name: online ? pick(names, i) : undefined,
+      phone: online ? "0788 000 000" : undefined,
+      address: delivery ? "KG 9 Ave, house 14, blue gate" : undefined,
+      zone: delivery ? "Kimihurura, Kacyiru" : undefined,
+      when: online ? "asap" : undefined,
+      payment: online ? (i % 2 ? "momo" : "cash") : undefined,
       lines,
-      total: lines.reduce((s, l) => s + l.price * l.qty, 0),
+      fee: fee || undefined,
+      total: lines.reduce((s, l) => s + l.price * l.qty, 0) + fee,
       status,
     };
   }).reverse();
@@ -171,8 +199,12 @@ function seed(): DB {
     const d = new Date(now); d.setDate(d.getDate() + offset);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
+  const nextDow = (dow: number) => { const d = new Date(now); d.setDate(d.getDate() + ((dow - d.getDay() + 7) % 7 || 7)); return Math.round((d.getTime() - now.getTime()) / 86400000); };
   const reservations: Reservation[] = [
-    { id: 205, createdAt: now.getTime() - 20 * 60_000, name: "Clarisse M.", phone: "0788 000 001", date: day(0), time: "19:30", guests: 4, note: "Birthday, can we get a quiet corner?", status: "pending" },
+    { id: 208, createdAt: now.getTime() - 45 * 60_000, kind: "event", event: "Friday Fire Sessions", name: "Eric H.", phone: "0788 000 006", date: day(nextDow(5)), time: "19:00", guests: 5, status: "pending" },
+    { id: 207, createdAt: now.getTime() - 5 * 3600_000, kind: "brunch", name: "Aline U.", phone: "0788 000 007", date: day(nextDow(6)), time: "11:00", guests: 3, note: "Bottomless brunch for all three", status: "confirmed" },
+    { id: 206, createdAt: now.getTime() - 8 * 3600_000, kind: "private", event: "Wedding after-party", name: "Diane K.", phone: "0788 000 008", date: day(17), time: "19:00", guests: 45, note: "Garden terrace. Budget around 30,000 RWF a head. Need a DJ spot.", status: "pending" },
+    { id: 205, createdAt: now.getTime() - 20 * 60_000, kind: "table", name: "Clarisse M.", phone: "0788 000 001", date: day(0), time: "19:30", guests: 4, note: "Birthday, can we get a quiet corner?", status: "pending" },
     { id: 204, createdAt: now.getTime() - 3 * 3600_000, name: "Olivier N.", phone: "0788 000 002", date: day(1), time: "13:00", guests: 8, note: "Team lunch", status: "pending" },
     { id: 203, createdAt: now.getTime() - 26 * 3600_000, name: "Grace U.", phone: "0788 000 003", date: day(0), time: "20:00", guests: 2, status: "confirmed" },
     { id: 202, createdAt: now.getTime() - 30 * 3600_000, name: "Kevin I.", phone: "0788 000 004", date: day(2), time: "18:30", guests: 6, status: "confirmed" },

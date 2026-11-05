@@ -28,6 +28,12 @@ export function H1({ children, aside }: { children: React.ReactNode; aside?: Rea
   );
 }
 
+/** Short "where is this order going" label. */
+export function orderWhere(o: { table?: string; type: string; name?: string }) {
+  if (o.table) return `Table ${o.table}`;
+  return `${o.name ?? "Guest"}, ${o.type === "delivery" ? "delivery" : "pickup"}`;
+}
+
 /** "250788..." for wa.me from a local 07.. number */
 export const waNumber = (phone: string) => {
   const d = phone.replace(/\D/g, "");

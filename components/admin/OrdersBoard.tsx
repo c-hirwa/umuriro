@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { rwf } from "@/lib/data";
 import { setOrderStatus, type DB, type Order, type OrderStatus } from "@/lib/store";
-import { H1, ago, clock, isToday, useTick } from "./util";
+import { H1, ago, clock, isToday, orderWhere, useTick } from "./util";
 
 const COLS: { s: OrderStatus; label: string; next?: { s: OrderStatus; label: (o: Order) => string } }[] = [
   { s: "new", label: "New", next: { s: "preparing", label: () => "Start cooking" } },
-  { s: "preparing", label: "On the grill", next: { s: "ready", label: () => "Mark ready" } },
-  { s: "ready", label: "Ready", next: { s: "done", label: (o) => (o.type === "takeaway" ? "Collected" : "Served") } },
+  { s: "preparing", label: "On the grill", next: { s: "ready", label: (o) => (o.type === "delivery" ? "Send with rider" : "Mark ready") } },
+  { s: "ready", label: "Ready / out", next: { s: "done", label: (o) => (o.type === "takeaway" ? "Collected" : o.type === "delivery" ? "Delivered" : "Served") } },
 ];
 
 export function OrdersBoard({ db, fresh }: { db: DB; fresh: Set<number> }) {
@@ -22,10 +22,10 @@ export function OrdersBoard({ db, fresh }: { db: DB; fresh: Set<number> }) {
     <>
       <H1 aside={
         <div className="flex gap-1 rounded-full bg-mist p-1 text-sm font-semibold" role="radiogroup" aria-label="Filter orders">
-          {(["all", "dine-in", "takeaway"] as const).map((f) => (
+          {(["all", "dine-in", "takeaway", "delivery"] as const).map((f) => (
             <button key={f} role="radio" aria-checked={filter === f} onClick={() => setFilter(f)}
               className={`rounded-full px-3.5 py-1.5 ${filter === f ? "bg-white shadow-sm" : "text-ash"}`}>
-              {f === "all" ? "All" : f === "dine-in" ? "Tables" : "Takeaway"}
+              {f === "all" ? "All" : f === "dine-in" ? "Tables" : f === "takeaway" ? "Pickup" : "Delivery"}
             </button>
           ))}
         </div>
@@ -45,12 +45,17 @@ export function OrdersBoard({ db, fresh }: { db: DB; fresh: Set<number> }) {
                   const late = c.s !== "ready" && now - o.createdAt > 20 * 60_000;
                   return (
                     <li key={o.id} className={`rounded-xl bg-white p-3.5 shadow-sm ${fresh.has(o.id) && c.s === "new" ? "ping ring-2 ring-ember" : ""}`}>
-                      <div className="flex items-baseline gap-2">
+                      <div className="flex flex-wrap items-baseline gap-x-2">
                         <span className="font-display text-2xl font-black">#{o.id}</span>
-                        <span className="font-semibold">{o.table ? `Table ${o.table}` : "Takeaway"}</span>
+                        <span className="font-semibold">{o.table ? `Table ${o.table}` : o.type === "delivery" ? "Delivery" : "Pickup"}</span>
+                        {o.channel === "online" && <span className="rounded bg-ochre/30 px-1.5 text-[11px] font-bold">ONLINE</span>}
                         <span className={`ml-auto text-xs tabular-nums ${late ? "font-bold text-ember-deep" : "text-ash"}`}>{ago(o.createdAt, now)}</span>
                       </div>
-                      {o.type === "takeaway" && <p className="text-sm text-ash">{o.name}, {o.phone}</p>}
+                      {o.type !== "dine-in" && <p className="text-sm text-ash">{o.name}, {o.phone}</p>}
+                      {o.address && <p className="text-sm"><b>To:</b> {o.address}{o.zone && <span className="text-ash"> ({o.zone})</span>}</p>}
+                      {(o.when && o.when !== "asap") && <p className="text-sm font-bold text-ember-deep">For {o.when}</p>}
+                      {o.payment && <p className="text-xs text-ash">Pays by {o.payment === "momo" ? "Mobile Money" : o.payment}</p>}
+                      {o.note && <p className="mt-1 text-sm font-semibold text-ember-deep">“{o.note}”</p>}
                       <ul className="mt-2 space-y-1 text-sm">
                         {o.lines.map((l, i) => (
                           <li key={i}>
@@ -96,7 +101,7 @@ export function OrdersBoard({ db, fresh }: { db: DB; fresh: Set<number> }) {
                   <tr key={o.id} className={`border-t border-mist ${o.status === "cancelled" ? "text-ash line-through" : ""}`}>
                     <td className="p-3 font-bold">#{o.id}</td>
                     <td className="p-3 tabular-nums">{clock(o.createdAt)}</td>
-                    <td className="p-3">{o.table ? `Table ${o.table}` : `${o.name}, takeaway`}</td>
+                    <td className="p-3">{orderWhere(o)}</td>
                     <td className="p-3">{o.lines.map((l) => `${l.qty}× ${l.name}`).join(", ")}</td>
                     <td className="p-3 text-right tabular-nums">{rwf(o.total)}</td>
                   </tr>

@@ -1,40 +1,41 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MENU, PHOTOS, PLACE, dishById, photo, rwf, type Dish } from "@/lib/data";
+import { MENU, menuForNow, PHOTOS, PLACE, dishById, photo, rwf, type Dish } from "@/lib/data";
 import { placeOrder, useDB, type Order } from "@/lib/store";
+import { rememberOrder, useCart, useMyOrderIds } from "@/lib/cart";
 import { Logo } from "@/components/Logo";
+import { BackIcon, Badge, DishSheet, Sheet, Stepper, Tracker, VegMark, useMounted, useToast } from "@/components/order/ui";
 
-type CartLine = { key: string; dishId: string; qty: number; options?: string; note?: string };
-
-const MY_ORDERS = "umuriro:my-orders";
-
+/** The menu guests open from the QR code on their table. Without ?table= it works as a browsable menu. */
 export function MenuApp() {
   const params = useSearchParams();
   const tableParam = params.get("table");
-  const table = tableParam && /^\d{1,2}$/.test(tableParam) ? tableParam : null;
+  const table = tableParam && /^\d{1,2}$/.test(tableParam) && Number(tableParam) >= 1 && Number(tableParam) <= PLACE.tables ? tableParam : null;
   const db = useDB();
   const soldOut = useMemo(() => new Set(db?.soldOut ?? []), [db]);
+  const cart = useCart("table");
+  const mounted = useMounted();
+  const [toast, showToast] = useToast();
 
-  const [cart, setCart] = useState<CartLine[]>([]);
   const [open, setOpen] = useState<Dish | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [tracking, setTracking] = useState<number | null>(null);
-  const [active, setActive] = useState(MENU[0].id);
+  const [active, setActive] = useState("");
+  const [query, setQuery] = useState("");
+  const [vegOnly, setVegOnly] = useState(false);
 
-  const [mine, setMine] = useState<number[]>([]);
-  useEffect(() => {
-    const t = setTimeout(() => {
-      try { setMine(JSON.parse(localStorage.getItem(MY_ORDERS) ?? "[]")); } catch {}
-    }, 0);
-    return () => clearTimeout(t);
-  }, [tracking]);
-  const activeOrder = db?.orders.find((o) => mine.includes(o.id) && ["new", "preparing", "ready"].includes(o.status));
+  const mine = useMyOrderIds();
+  const activeOrder = db?.orders.find((o) => mine.includes(o.id) && o.channel !== "online" && ["new", "preparing", "ready"].includes(o.status));
 
-  const count = cart.reduce((s, l) => s + l.qty, 0);
-  const total = cart.reduce((s, l) => s + l.qty * (dishById(l.dishId)?.price ?? 0), 0);
+  const menu = useMemo(() => menuForNow(mounted ? new Date() : undefined), [mounted]);
+  const q = query.trim().toLowerCase();
+  const sections = menu.map((s) => ({
+    ...s,
+    dishes: s.dishes.filter((d) => (!vegOnly || d.veg) && (!q || `${d.name} ${d.desc}`.toLowerCase().includes(q))),
+  })).filter((s) => s.dishes.length);
 
   // highlight the section in view
   useEffect(() => {
@@ -45,51 +46,52 @@ export function MenuApp() {
     );
     els.forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, [tracking]);
-
-  function add(line: Omit<CartLine, "key">) {
-    setCart((c) => {
-      const key = `${line.dishId}|${line.options ?? ""}|${line.note ?? ""}`;
-      const found = c.find((l) => l.key === key);
-      return found ? c.map((l) => (l.key === key ? { ...l, qty: l.qty + line.qty } : l)) : [...c, { ...line, key }];
-    });
-  }
+  }, [tracking, q, vegOnly, menu]);
 
   function send(details: { type: Order["type"]; table?: string; name?: string; phone?: string }) {
     const order = placeOrder({
       ...details,
-      lines: cart.map((l) => {
+      channel: "table",
+      lines: cart.lines.map((l) => {
         const d = dishById(l.dishId)!;
         return { dishId: d.id, name: d.name, price: d.price, qty: l.qty, options: l.options, note: l.note };
       }),
     });
-    try {
-      const mine = JSON.parse(localStorage.getItem(MY_ORDERS) ?? "[]") as number[];
-      localStorage.setItem(MY_ORDERS, JSON.stringify([order.id, ...mine].slice(0, 10)));
-    } catch {}
-    setCart([]);
+    rememberOrder(order.id);
+    cart.clear();
     setCartOpen(false);
     setTracking(order.id);
     window.scrollTo({ top: 0 });
   }
 
   if (tracking !== null) {
-    return <Tracker id={tracking} onBack={() => setTracking(null)} />;
+    return <Tracker id={tracking} back={{ label: "Back to the menu", onClick: () => setTracking(null) }} />;
   }
 
   return (
     <div className="mx-auto min-h-dvh max-w-2xl bg-bone pb-28 shadow-[0_0_0_100vmax_var(--color-leaf)] [clip-path:inset(0_-100vmax)]">
+      {toast}
       {/* banner */}
       <header className="relative isolate overflow-hidden bg-char px-4 pt-4 pb-6 text-bone">
         <img src={photo(PHOTOS.hero, 1000, 500)} alt="" className="absolute inset-0 -z-10 size-full object-cover opacity-45" />
-        <div className="flex items-center justify-between">
-          <Link href="/" aria-label="Umuriro website"><Logo light /></Link>
-          <span className="rounded-full bg-bone px-3 py-1 text-sm font-bold text-leaf">{table ? `Table ${table}` : "Takeaway"}</span>
+        <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-1 rounded-full bg-char/50 py-1.5 pl-2 pr-3 text-sm font-bold backdrop-blur hover:bg-char/70">
+            <BackIcon className="size-4" /> Website
+          </Link>
+          <span className="ml-auto rounded-full bg-bone px-3 py-1 text-sm font-bold text-leaf">{table ? `Table ${table}` : "Menu"}</span>
         </div>
-        <h1 className="mt-10 font-display text-5xl font-black leading-none">Menu</h1>
+        <Logo light className="mt-8" />
+        <h1 className="mt-2 font-display text-5xl font-black leading-none">{table ? "Order to your table" : "The menu"}</h1>
         <p className="mt-1 text-sm text-bone/80">Kitchen open until 23:00. Prices include VAT.</p>
       </header>
       <div className="imigongo" aria-hidden="true" />
+
+      {!table && (
+        <Link href="/order" className="flex items-center gap-3 bg-leaf px-4 py-3 text-sm text-bone hover:bg-leaf-soft">
+          <span className="flex-1"><b>Not at the restaurant?</b> Order for pickup or delivery.</span>
+          <span className="font-bold text-ochre">Order online →</span>
+        </Link>
+      )}
 
       {activeOrder && (
         <button onClick={() => setTracking(activeOrder.id)}
@@ -100,10 +102,22 @@ export function MenuApp() {
         </button>
       )}
 
-      {/* category nav */}
+      {/* search + category nav */}
       <nav aria-label="Menu sections" className="sticky top-0 z-20 border-b border-mist bg-bone/95 backdrop-blur">
-        <div className="flex gap-2 overflow-x-auto px-4 py-3 [scrollbar-width:none]">
-          {MENU.map((s) => (
+        <div className="flex items-center gap-2 px-4 pt-3">
+          <label className="relative flex-1">
+            <span className="sr-only">Search the menu</span>
+            <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ash" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search dishes"
+              className="w-full rounded-full border-2 border-mist bg-white py-2 pl-9 pr-3 text-sm focus:border-leaf focus:outline-none" />
+          </label>
+          <button onClick={() => setVegOnly((v) => !v)} aria-pressed={vegOnly}
+            className={`shrink-0 rounded-full border-2 px-3 py-1.5 text-sm font-bold ${vegOnly ? "border-leaf bg-leaf text-bone" : "border-mist bg-white"}`}>
+            Vegetarian
+          </button>
+        </div>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3">
+          {sections.map((s) => (
             <a key={s.id} href={`#sec-${s.id}`} aria-current={active === s.id ? "true" : undefined}
               className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-colors ${active === s.id ? "bg-leaf text-bone" : "bg-mist/70 text-char hover:bg-mist"}`}>
               {s.label}
@@ -112,20 +126,28 @@ export function MenuApp() {
         </div>
       </nav>
 
-      {MENU.map((s) => (
-        <section key={s.id} id={`sec-${s.id}`} aria-labelledby={`h-${s.id}`} className="scroll-mt-16 px-4 pt-8">
+      {sections.length === 0 && (
+        <div className="px-4 py-16 text-center">
+          <p className="font-bold">Nothing matches “{query}”.</p>
+          <button onClick={() => { setQuery(""); setVegOnly(false); }} className="mt-2 font-bold text-ember underline underline-offset-4">Clear search</button>
+        </div>
+      )}
+
+      {sections.map((s) => (
+        <section key={s.id} id={`sec-${s.id}`} aria-labelledby={`h-${s.id}`} className="scroll-mt-32 px-4 pt-8">
           <h2 id={`h-${s.id}`} className="font-display text-3xl font-black text-leaf">{s.label}</h2>
+          {s.note && <p className="text-sm font-semibold text-ember-deep">{s.note}</p>}
           <ul className="mt-2 divide-y divide-mist">
             {s.dishes.map((d) => {
               const out = soldOut.has(d.id);
-              const inCart = cart.filter((l) => l.dishId === d.id).reduce((n, l) => n + l.qty, 0);
+              const inCart = cart.lines.filter((l) => l.dishId === d.id).reduce((n, l) => n + l.qty, 0);
               return (
                 <li key={d.id}>
                   <button disabled={out} onClick={() => setOpen(d)}
                     className="flex w-full items-center gap-4 py-4 text-left disabled:cursor-not-allowed">
                     <div className={`min-w-0 flex-1 ${out ? "opacity-45" : ""}`}>
                       {d.tag && !out && <span className="mb-1 inline-block rounded bg-ochre/25 px-1.5 py-0.5 text-xs font-bold text-char">{d.tag}</span>}
-                      <p className="font-bold leading-snug">{d.name}</p>
+                      <p className="flex items-center gap-1.5 font-bold leading-snug">{d.name}{d.veg && <VegMark />}</p>
                       <p className="mt-0.5 line-clamp-2 text-sm text-ash">{d.desc}</p>
                       <p className="mt-1.5 font-semibold tabular-nums">{out ? "Sold out today" : rwf(d.price)}</p>
                     </div>
@@ -135,9 +157,11 @@ export function MenuApp() {
                           className={`size-24 rounded-xl bg-mist object-cover ${out ? "grayscale opacity-50" : ""}`} />
                         {inCart > 0 && <Badge n={inCart} />}
                       </div>
-                    ) : inCart > 0 ? (
-                      <div className="relative size-8"><Badge n={inCart} /></div>
-                    ) : null}
+                    ) : (
+                      <div className="relative grid size-10 shrink-0 place-items-center rounded-full border-2 border-mist text-xl font-bold text-leaf">
+                        +{inCart > 0 && <Badge n={inCart} />}
+                      </div>
+                    )}
                   </button>
                 </li>
               );
@@ -147,127 +171,44 @@ export function MenuApp() {
       ))}
 
       <p className="px-4 pt-10 text-center text-sm text-ash">Allergies? Tell your server or add a note to the dish.</p>
+      <div className="px-4 pt-4 text-center">
+        <Link href="/" className="inline-flex items-center gap-1 font-bold text-leaf underline underline-offset-4"><BackIcon className="size-4" /> Back to the Umuriro website</Link>
+      </div>
 
       {/* cart bar */}
-      {count > 0 && !cartOpen && !open && (
+      {cart.count > 0 && !cartOpen && !open && (
         <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-2xl p-4 fade-in">
           <button onClick={() => setCartOpen(true)}
             className="flex w-full items-center gap-3 rounded-full bg-ember px-5 py-4 font-bold text-white shadow-xl hover:bg-ember-deep">
-            <span className="grid size-7 place-items-center rounded-full bg-white text-sm text-ember">{count}</span>
+            <span className="grid size-7 place-items-center rounded-full bg-white text-sm text-ember">{cart.count}</span>
             View order
-            <span className="ml-auto tabular-nums">{rwf(total)}</span>
+            <span className="ml-auto tabular-nums">{rwf(cart.subtotal)}</span>
           </button>
         </div>
       )}
 
-      {open && <DishSheet dish={open} onClose={() => setOpen(null)} onAdd={(l) => { add(l); setOpen(null); }} />}
+      {open && (
+        <DishSheet dish={open} onClose={() => setOpen(null)} note={MENU.find((s) => s.dishes.includes(open))?.note}
+          onAdd={(l) => { cart.add(l); setOpen(null); showToast(`Added ${l.qty} × ${open.name}`); }} />
+      )}
       {cartOpen && (
-        <CartSheet cart={cart} setCart={setCart} table={table} total={total}
-          onClose={() => setCartOpen(false)} onSend={send} soldOut={soldOut} />
+        <CartSheet cart={cart} table={table} onClose={() => setCartOpen(false)} onSend={send} soldOut={soldOut} />
       )}
     </div>
   );
 }
 
-function Badge({ n }: { n: number }) {
-  return <span className="absolute -top-2 -right-2 grid size-7 place-items-center rounded-full bg-ember text-sm font-bold text-white ring-3 ring-bone">{n}</span>;
-}
-
-/* ---------- bottom sheet shell ---------- */
-function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    ref.current?.focus();
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center">
-      <div className="fade-in absolute inset-0 bg-char/60" onClick={onClose} />
-      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={label}
-        className="sheet-in relative flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-bone outline-none">
-        <button onClick={onClose} aria-label="Close"
-          className="absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-bone/90 text-xl font-bold shadow">×</button>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Stepper({ value, onChange, min = 0, label }: { value: number; onChange: (n: number) => void; min?: number; label: string }) {
-  return (
-    <div className="flex items-center rounded-full border-2 border-mist bg-white font-bold">
-      <button onClick={() => onChange(Math.max(min, value - 1))} aria-label={`One less ${label}`} className="grid size-10 place-items-center text-lg">−</button>
-      <span className="w-6 text-center tabular-nums">{value}</span>
-      <button onClick={() => onChange(Math.min(20, value + 1))} aria-label={`One more ${label}`} className="grid size-10 place-items-center text-lg">+</button>
-    </div>
-  );
-}
-
-/* ---------- dish detail ---------- */
-function DishSheet({ dish, onClose, onAdd }: { dish: Dish; onClose: () => void; onAdd: (l: Omit<CartLine, "key">) => void }) {
-  const [qty, setQty] = useState(1);
-  const [choices, setChoices] = useState<string[]>(dish.options?.map((o) => o.choices[0]) ?? []);
-  const [note, setNote] = useState("");
-  return (
-    <Sheet label={dish.name} onClose={onClose}>
-      <div className="overflow-y-auto">
-        {dish.img && <img src={photo(dish.img, 900, 600)} alt={dish.name} className="aspect-[3/2] w-full bg-mist object-cover" />}
-        <div className="p-5">
-          <h2 className="font-display text-4xl font-black leading-none text-leaf">{dish.name}</h2>
-          <p className="mt-2 text-ash">{dish.desc}</p>
-          <p className="mt-2 text-lg font-bold tabular-nums">{rwf(dish.price)}</p>
-
-          {dish.options?.map((o, i) => (
-            <fieldset key={o.label} className="mt-6">
-              <legend className="mb-2 font-bold">{o.label}</legend>
-              <div className="flex flex-wrap gap-2">
-                {o.choices.map((c) => {
-                  const on = choices[i] === c;
-                  return (
-                    <label key={c} className={`cursor-pointer rounded-full border-2 px-4 py-2 text-sm font-semibold transition-colors has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-ember ${on ? "border-leaf bg-leaf text-bone" : "border-mist bg-white"}`}>
-                      <input type="radio" className="sr-only" name={o.label} checked={on} onChange={() => setChoices((p) => p.map((x, j) => (j === i ? c : x)))} />
-                      {c}
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
-          ))}
-
-          <label className="mt-6 block">
-            <span className="font-bold">Note for the kitchen</span>
-            <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} placeholder="No onions, extra sauce..."
-              className="mt-2 w-full rounded-xl border-2 border-mist bg-white px-3.5 py-3 focus:border-leaf focus:outline-none" />
-          </label>
-        </div>
-      </div>
-      <div className="flex items-center gap-3 border-t border-mist p-4">
-        <Stepper value={qty} onChange={setQty} min={1} label={dish.name} />
-        <button onClick={() => onAdd({ dishId: dish.id, qty, options: choices.join(", ") || undefined, note: note.trim() || undefined })}
-          className="flex flex-1 items-center justify-between rounded-full bg-ember px-5 py-3 font-bold text-white hover:bg-ember-deep">
-          Add to order <span className="tabular-nums">{rwf(dish.price * qty)}</span>
-        </button>
-      </div>
-    </Sheet>
-  );
-}
-
-/* ---------- cart / checkout ---------- */
-function CartSheet({ cart, setCart, table, total, onClose, onSend, soldOut }: {
-  cart: CartLine[]; setCart: React.Dispatch<React.SetStateAction<CartLine[]>>; table: string | null; total: number;
+/* ---------- cart / send to kitchen ---------- */
+function CartSheet({ cart, table, onClose, onSend, soldOut }: {
+  cart: ReturnType<typeof useCart>; table: string | null;
   onClose: () => void; onSend: (d: { type: Order["type"]; table?: string; name?: string; phone?: string }) => void; soldOut: Set<string>;
 }) {
-  const [type, setType] = useState<Order["type"]>(table ? "dine-in" : "takeaway");
+  const [type, setType] = useState<"dine-in" | "takeaway">("dine-in");
   const [tableNo, setTableNo] = useState(table ?? "");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
-  const unavailable = cart.filter((l) => soldOut.has(l.dishId));
-
-  useEffect(() => { if (cart.length === 0) onClose(); }, [cart.length, onClose]);
+  const unavailable = cart.lines.filter((l) => soldOut.has(l.dishId));
 
   function submit() {
     if (unavailable.length) return setError("Remove the sold-out dishes before sending.");
@@ -281,122 +222,77 @@ function CartSheet({ cart, setCart, table, total, onClose, onSend, soldOut }: {
     <Sheet label="Your order" onClose={onClose}>
       <div className="overflow-y-auto p-5">
         <h2 className="font-display text-4xl font-black text-leaf">Your order</h2>
-        <ul className="mt-3 divide-y divide-mist">
-          {cart.map((l) => {
-            const d = dishById(l.dishId)!;
-            return (
-              <li key={l.key} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold">{d.name}</p>
-                  {(l.options || l.note) && <p className="text-sm text-ash">{[l.options, l.note && `“${l.note}”`].filter(Boolean).join(". ")}</p>}
-                  {soldOut.has(l.dishId) && <p className="text-sm font-bold text-ember-deep">Just sold out</p>}
-                  <p className="text-sm font-semibold tabular-nums">{rwf(d.price * l.qty)}</p>
-                </div>
-                <Stepper value={l.qty} label={d.name}
-                  onChange={(n) => setCart((c) => (n === 0 ? c.filter((x) => x.key !== l.key) : c.map((x) => (x.key === l.key ? { ...x, qty: n } : x))))} />
-              </li>
-            );
-          })}
-        </ul>
-
-        <div className="mt-5 grid grid-cols-2 gap-1 rounded-full bg-mist p-1" role="radiogroup" aria-label="Eating here or taking away">
-          {(["dine-in", "takeaway"] as const).map((t) => (
-            <button key={t} role="radio" aria-checked={type === t} onClick={() => { setType(t); setError(""); }}
-              className={`rounded-full py-2.5 font-bold transition-colors ${type === t ? "bg-white shadow" : "text-ash"}`}>
-              {t === "dine-in" ? "Eating here" : "Takeaway"}
-            </button>
-          ))}
-        </div>
-
-        {type === "dine-in" ? (
-          <label className="mt-4 block">
-            <span className="font-bold">Table</span>
-            <select value={tableNo} onChange={(e) => setTableNo(e.target.value)}
-              className="mt-2 w-full rounded-xl border-2 border-mist bg-white px-3.5 py-3">
-              <option value="">Choose your table</option>
-              {Array.from({ length: PLACE.tables }, (_, i) => String(i + 1)).map((n) => <option key={n} value={n}>Table {n}</option>)}
-            </select>
-          </label>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <label className="block"><span className="font-bold">Name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" className="mt-2 w-full rounded-xl border-2 border-mist bg-white px-3.5 py-3" />
-            </label>
-            <label className="block"><span className="font-bold">Phone</span>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" autoComplete="tel" placeholder="078..." className="mt-2 w-full rounded-xl border-2 border-mist bg-white px-3.5 py-3" />
-            </label>
+        {cart.lines.length === 0 ? (
+          <div className="py-10 text-center">
+            <p className="text-ash">Nothing here yet.</p>
+            <button onClick={onClose} className="mt-3 font-bold text-ember underline underline-offset-4">Back to the menu</button>
           </div>
+        ) : (
+          <ul className="mt-3 divide-y divide-mist">
+            {cart.lines.map((l) => {
+              const d = dishById(l.dishId)!;
+              return (
+                <li key={l.key} className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold">{d.name}</p>
+                    {(l.options || l.note) && <p className="text-sm text-ash">{[l.options, l.note && `“${l.note}”`].filter(Boolean).join(". ")}</p>}
+                    {soldOut.has(l.dishId) && <p className="text-sm font-bold text-ember-deep">Just sold out</p>}
+                    <p className="text-sm font-semibold tabular-nums">{rwf(d.price * l.qty)}</p>
+                  </div>
+                  <Stepper value={l.qty} label={d.name} onChange={(n) => cart.setQty(l.key, n)} />
+                </li>
+              );
+            })}
+          </ul>
         )}
-        {error && <p role="alert" className="mt-3 font-semibold text-ember-deep">{error}</p>}
+
+        {cart.lines.length > 0 && (
+          <>
+            <div className="mt-5 grid grid-cols-2 gap-1 rounded-full bg-mist p-1" role="radiogroup" aria-label="Eating here or taking away">
+              {(["dine-in", "takeaway"] as const).map((t) => (
+                <button key={t} role="radio" aria-checked={type === t} onClick={() => { setType(t); setError(""); }}
+                  className={`rounded-full py-2.5 font-bold transition-colors ${type === t ? "bg-white shadow" : "text-ash"}`}>
+                  {t === "dine-in" ? "Eating here" : "Taking away"}
+                </button>
+              ))}
+            </div>
+
+            {type === "dine-in" ? (
+              <label className="mt-4 block">
+                <span className="font-bold">Table</span>
+                <select value={tableNo} onChange={(e) => setTableNo(e.target.value)}
+                  className="mt-2 w-full rounded-xl border-2 border-mist bg-white px-3.5 py-3">
+                  <option value="">Choose your table</option>
+                  {Array.from({ length: PLACE.tables }, (_, i) => String(i + 1)).map((n) => <option key={n} value={n}>Table {n}</option>)}
+                </select>
+              </label>
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <label className="block"><span className="font-bold">Name</span>
+                  <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" className="mt-2 w-full rounded-xl border-2 border-mist bg-white px-3.5 py-3" />
+                </label>
+                <label className="block"><span className="font-bold">Phone</span>
+                  <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" autoComplete="tel" placeholder="078..." className="mt-2 w-full rounded-xl border-2 border-mist bg-white px-3.5 py-3" />
+                </label>
+              </div>
+            )}
+            {error && <p role="alert" className="mt-3 font-semibold text-ember-deep">{error}</p>}
+          </>
+        )}
       </div>
-      <div className="border-t border-mist p-4">
-        <div className="mb-3 flex items-baseline justify-between">
-          <span className="text-ash">Total</span>
-          <span className="font-display text-3xl font-black tabular-nums">{rwf(total)}</span>
+      {cart.lines.length > 0 && (
+        <div className="border-t border-mist p-4">
+          <div className="mb-3 flex items-baseline justify-between">
+            <span className="text-ash">Total</span>
+            <span className="font-display text-3xl font-black tabular-nums">{rwf(cart.subtotal)}</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="rounded-full border-2 border-mist px-5 py-4 font-bold">Keep browsing</button>
+            <button onClick={submit} className="flex-1 rounded-full bg-ember py-4 font-bold text-white hover:bg-ember-deep">Send to kitchen</button>
+          </div>
+          <p className="mt-2 text-center text-xs text-ash">You pay at the end with MoMo, card or cash.</p>
         </div>
-        <button onClick={submit} className="w-full rounded-full bg-ember py-4 font-bold text-white hover:bg-ember-deep">Send to kitchen</button>
-        <p className="mt-2 text-center text-xs text-ash">You pay at the end with MoMo, card or cash.</p>
-      </div>
-    </Sheet>
-  );
-}
-
-/* ---------- live order tracker ---------- */
-const STEPS = [
-  { s: "new", label: "Received", hint: "The kitchen has your order." },
-  { s: "preparing", label: "On the grill", hint: "Being cooked now." },
-  { s: "ready", label: "Ready", hint: "Coming out to you." },
-  { s: "done", label: "Enjoy", hint: "Served. Shout if you need anything." },
-] as const;
-
-function Tracker({ id, onBack }: { id: number; onBack: () => void }) {
-  const db = useDB();
-  const order = db?.orders.find((o) => o.id === id);
-  if (!order) return <div className="grid min-h-dvh place-items-center bg-bone text-ash">Loading your order…</div>;
-  const idx = STEPS.findIndex((s) => s.s === order.status);
-  const cancelled = order.status === "cancelled";
-
-  return (
-    <div className="mx-auto min-h-dvh max-w-2xl bg-bone shadow-[0_0_0_100vmax_var(--color-leaf)] [clip-path:inset(0_-100vmax)]">
-      <div className="bg-leaf px-5 pb-8 pt-5 text-bone">
-        <Logo light />
-        <p className="mt-10 text-bone/75">Order #{order.id}{order.table ? `, table ${order.table}` : ", takeaway"}</p>
-        <h1 className="font-display text-5xl font-black leading-none" aria-live="polite">
-          {cancelled ? "Order cancelled" : STEPS[idx].label}
-        </h1>
-        <p className="mt-2 text-bone/85">{cancelled ? "Sorry, something on your order wasn't available. A server will come by." : STEPS[idx].hint}</p>
-      </div>
-      <div className="imigongo" aria-hidden="true" />
-      {!cancelled && (
-        <ol className="px-5 pt-8">
-          {STEPS.map((s, i) => {
-            const done = i < idx, now = i === idx;
-            return (
-              <li key={s.s} className="relative flex gap-4 pb-7 last:pb-0">
-                {i < STEPS.length - 1 && <span className={`absolute left-[15px] top-8 h-[calc(100%-2rem)] w-0.5 ${done ? "bg-leaf" : "bg-mist"}`} aria-hidden="true" />}
-                <span className={`grid size-8 shrink-0 place-items-center rounded-full text-sm font-bold ${done ? "bg-leaf text-bone" : now ? "bg-ember text-white ping" : "bg-mist text-ash"}`}>
-                  {done ? "✓" : i + 1}
-                </span>
-                <div className={now ? "" : "text-ash"}>
-                  <p className="font-bold">{s.label}</p>
-                  {now && <p className="text-sm">{s.hint}</p>}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
       )}
-      <div className="mx-5 mt-8 rounded-2xl bg-white p-4">
-        <ul className="space-y-1.5 text-sm">
-          {order.lines.map((l, i) => (
-            <li key={i} className="flex gap-3"><span className="font-bold">{l.qty}×</span><span className="flex-1">{l.name}</span><span className="tabular-nums">{rwf(l.qty * l.price)}</span></li>
-          ))}
-        </ul>
-        <p className="mt-3 flex justify-between border-t border-mist pt-3 font-bold"><span>Total</span><span className="tabular-nums">{rwf(order.total)}</span></p>
-      </div>
-      <div className="p-5">
-        <button onClick={onBack} className="w-full rounded-full border-2 border-leaf py-3.5 font-bold text-leaf">Order something else</button>
-      </div>
-    </div>
+    </Sheet>
   );
 }

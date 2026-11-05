@@ -1,8 +1,25 @@
 import Link from "next/link";
-import { HOURS, MENU, PHOTOS, PLACE, photo, rwf } from "@/lib/data";
-import { Logo } from "@/components/Logo";
+import { BRUNCH_HOURS, HOURS, MENU, PHOTOS, PLACE, photo, rwf } from "@/lib/data";
 import { MenuQR } from "@/components/site/MenuQR";
 import { ReservationForm } from "@/components/site/ReservationForm";
+import { SiteHeader } from "@/components/site/SiteHeader";
+import { SiteFooter } from "@/components/site/SiteFooter";
+import { EventsCalendar } from "@/components/site/EventsCalendar";
+import { OpenNow } from "@/components/site/OpenNow";
+import { Faq } from "@/components/site/Faq";
+
+const WAYS = [
+  { href: "/#book", title: "Eat in", desc: "Charcoal grill, garden terrace, open late on weekends.", cta: "Book a table", img: PHOTOS.room },
+  { href: "/order", title: "Order online", desc: "Pickup in 20 minutes or delivery across Kigali.", cta: "Start an order", img: "1555939594-58d7cb561ad1" },
+  { href: "/brunch", title: "Weekend brunch", desc: "Rolex, pancakes and bottomless mimosas, Sat and Sun.", cta: "See brunch", img: PHOTOS.crowd },
+  { href: "/events", title: "Events", desc: "Live music Fridays, Nyama Night, trivia and more.", cta: "See what is on", img: PHOTOS.coals },
+];
+
+const REVIEWS = [
+  { q: "The goat brochettes are the best in Kigali, and I have tried a lot of them. The Friday band is a bonus.", who: "Jean-Paul, Kimihurura" },
+  { q: "Sunday brunch has become our family thing. The kids go straight for the banana pancakes.", who: "Ange, Kicukiro" },
+  { q: "Ordered the mixed grill to the office for a team lunch. Hot, on time, and the rider called ahead.", who: "Michelle, Kacyiru" },
+];
 
 const featured = ["goat", "tilapia", "platter", "isombe", "hibiscus"].map(
   (id) => MENU.flatMap((s) => s.dishes).find((d) => d.id === id)!,
@@ -11,19 +28,7 @@ const featured = ["goat", "tilapia", "platter", "isombe", "hibiscus"].map(
 export default function Home() {
   return (
     <>
-      <header className="absolute inset-x-0 top-0 z-20">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-5 sm:px-6">
-          <Link href="/" aria-label="Umuriro home"><Logo light /></Link>
-          <nav className="ml-auto hidden items-center gap-7 text-sm font-semibold text-bone/90 md:flex">
-            <a href="#food" className="hover:text-bone">Food</a>
-            <a href="#book" className="hover:text-bone">Book a table</a>
-            <a href="#visit" className="hover:text-bone">Visit</a>
-          </nav>
-          <Link href="/menu" className="ml-auto rounded-full bg-bone px-4 py-2 text-sm font-bold text-leaf hover:bg-white md:ml-0">
-            Open the menu
-          </Link>
-        </div>
-      </header>
+      <SiteHeader overlay />
 
       <main>
         {/* Hero: the fire is the subject, so the photo carries it */}
@@ -31,8 +36,9 @@ export default function Home() {
           <img src={photo(PHOTOS.hero, 2000)} alt="Brochettes cooking over glowing charcoal"
             className="absolute inset-0 -z-10 size-full object-cover" fetchPriority="high" />
           <div className="absolute inset-0 -z-10 bg-gradient-to-t from-char via-char/55 to-char/10" />
-          <div className="mx-auto w-full max-w-6xl px-4 pb-14 sm:px-6 md:pb-20">
-            <h1 className="max-w-4xl font-display text-[clamp(3.6rem,11vw,9rem)] font-black leading-[0.86] tracking-tight">
+          <div className="mx-auto w-full max-w-6xl px-4 pb-14 pt-28 sm:px-6 md:pb-20">
+            <OpenNow />
+            <h1 className="mt-4 max-w-4xl font-display text-[clamp(3.6rem,11vw,9rem)] font-black leading-[0.86] tracking-tight">
               Cooked over fire, the Rwandan way.
             </h1>
             <div className="mt-8 flex flex-wrap items-end gap-x-10 gap-y-6">
@@ -41,12 +47,28 @@ export default function Home() {
               </p>
               <div className="flex flex-wrap gap-3">
                 <a href="#book" className="rounded-full bg-ember px-6 py-3 font-bold text-white hover:bg-ember-deep">Book a table</a>
+                <Link href="/order" className="rounded-full bg-bone px-6 py-3 font-bold text-leaf hover:bg-white">Order online</Link>
                 <Link href="/menu" className="rounded-full border-2 border-bone/70 px-6 py-3 font-bold hover:bg-bone hover:text-leaf">See the menu</Link>
               </div>
             </div>
           </div>
         </section>
         <div className="imigongo" aria-hidden="true" />
+
+        {/* Ways to eat */}
+        <section aria-label="Ways to eat with us" className="mx-auto max-w-6xl px-4 pt-16 sm:px-6">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {WAYS.map((w) => (
+              <Link key={w.title} href={w.href} className="group relative isolate flex min-h-56 flex-col justify-end overflow-hidden rounded-3xl bg-char p-5 text-bone">
+                <img src={photo(w.img, 600, 600)} alt="" loading="lazy" className="absolute inset-0 -z-10 size-full object-cover opacity-55 transition duration-500 group-hover:scale-105 group-hover:opacity-45" />
+                <div className="absolute inset-0 -z-10 bg-gradient-to-t from-char/90 to-transparent" />
+                <h2 className="font-display text-4xl font-black leading-none">{w.title}</h2>
+                <p className="mt-1 text-sm text-bone/80">{w.desc}</p>
+                <span className="mt-3 text-sm font-bold text-ochre group-hover:underline">{w.cta} →</span>
+              </Link>
+            ))}
+          </div>
+        </section>
 
         {/* Story */}
         <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-20 sm:px-6 md:grid-cols-2 md:py-28">
@@ -80,9 +102,10 @@ export default function Home() {
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <div className="flex flex-wrap items-end justify-between gap-6">
               <h2 className="font-display text-6xl font-black leading-none sm:text-7xl">What people order</h2>
-              <Link href="/menu" className="font-bold text-ochre underline decoration-2 underline-offset-4 hover:text-bone">
-                Full menu and prices
-              </Link>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                <Link href="/menu" className="font-bold text-ochre underline decoration-2 underline-offset-4 hover:text-bone">Full menu and prices</Link>
+                <Link href="/order" className="font-bold text-ochre underline decoration-2 underline-offset-4 hover:text-bone">Order for delivery</Link>
+              </div>
             </div>
             <div className="mt-10 grid gap-4 md:grid-cols-4 md:grid-rows-2">
               {featured.map((d, i) => (
@@ -100,6 +123,50 @@ export default function Home() {
                 </figure>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* Brunch */}
+        <section className="mx-auto max-w-6xl px-4 pt-20 sm:px-6 md:pt-28">
+          <div className="grid overflow-hidden rounded-3xl bg-ochre md:grid-cols-2">
+            <img src={photo(PHOTOS.crowd, 1000, 800)} alt="Friends at brunch around a long table" loading="lazy" className="aspect-[5/4] size-full object-cover md:aspect-auto" />
+            <div className="p-8 md:p-12">
+              <p className="font-bold text-char/70">{BRUNCH_HOURS}</p>
+              <h2 className="mt-1 font-display text-5xl font-black leading-[0.92] text-char sm:text-6xl">Weekend brunch is here.</h2>
+              <p className="mt-4 max-w-md text-lg text-char/80">
+                Rolex, pili-pili shakshuka, banana pancakes and brochettes off the morning fire. Go bottomless on juice, coffee and passion mimosas for 15,000 RWF.
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <Link href="/brunch#book-brunch" className="rounded-full bg-char px-6 py-3 font-bold text-bone hover:bg-leaf">Book brunch</Link>
+                <Link href="/brunch" className="rounded-full border-2 border-char px-6 py-3 font-bold text-char hover:bg-char hover:text-bone">See the brunch menu</Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* What's on */}
+        <section className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 md:grid-cols-[1fr_1.3fr] md:py-28">
+          <div>
+            <h2 className="font-display text-5xl font-black leading-[0.95] text-leaf sm:text-6xl">What&apos;s on this week</h2>
+            <p className="mt-4 max-w-sm text-lg text-ash">Live bands on Fridays, all-you-can-eat Nyama Night on Wednesdays, trivia on Tuesdays and a long-table fish feast once a month.</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/events" className="rounded-full bg-leaf px-6 py-3 font-bold text-bone hover:bg-leaf-soft">All events</Link>
+              <Link href="/private-events" className="rounded-full border-2 border-leaf px-6 py-3 font-bold text-leaf hover:bg-leaf hover:text-bone">Host a private event</Link>
+            </div>
+          </div>
+          <EventsCalendar limit={4} compact />
+        </section>
+
+        {/* Reviews */}
+        <section aria-label="What guests say" className="bg-mist/50 py-20">
+          <div className="mx-auto grid max-w-6xl gap-4 px-4 sm:px-6 md:grid-cols-3">
+            {REVIEWS.map((r) => (
+              <figure key={r.who} className="rounded-3xl bg-white p-6">
+                <p role="img" aria-label="5 out of 5 stars" className="text-ember">★★★★★</p>
+                <blockquote className="mt-3 text-lg leading-snug">“{r.q}”</blockquote>
+                <figcaption className="mt-4 text-sm font-bold text-ash">{r.who}</figcaption>
+              </figure>
+            ))}
           </div>
         </section>
 
@@ -155,18 +222,19 @@ export default function Home() {
               <a href={`tel:${PLACE.phoneDisplay.replace(/\s/g, "")}`} className="rounded-full bg-leaf px-5 py-2.5 font-bold text-bone">Call {PLACE.phoneDisplay}</a>
               <a href="https://maps.google.com/?q=Kiyovu,Kigali" target="_blank" rel="noopener" className="rounded-full border-2 border-leaf px-5 py-2.5 font-bold text-leaf">Directions</a>
             </div>
+            <div className="mt-10">
+              <Faq items={[
+                ["Do I need to book?", "Walk-ins are welcome. Book for Friday and Saturday nights, Sunday brunch, and any group over six."],
+                ["Do you deliver?", "Yes, across most of Kigali from 1,000 RWF, free over 40,000 RWF. Order online for pickup or delivery."],
+                ["Is there food for vegetarians?", "Isombe, ibihaza, samosas, roasted maize, salads and most of the brunch menu are vegetarian."],
+                ["How do I pay?", "MTN MoMo, Airtel Money, Visa and Mastercard, or cash."],
+              ]} />
+            </div>
           </div>
         </section>
       </main>
 
-      <div className="imigongo" aria-hidden="true" />
-      <footer className="bg-leaf text-bone">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-8 text-sm sm:px-6">
-          <Logo light />
-          <p className="text-bone/75">{PLACE.address}</p>
-          <p className="text-bone/75 sm:ml-auto">Umuriro Grill House</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }

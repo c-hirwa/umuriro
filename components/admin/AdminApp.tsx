@@ -9,6 +9,7 @@ import { OrdersBoard } from "./OrdersBoard";
 import { Reservations } from "./Reservations";
 import { MenuManager } from "./MenuManager";
 import { QRCodes } from "./QRCodes";
+import { orderWhere } from "./util";
 
 // Demo-only gate. A real deployment needs proper auth on the server.
 const DEMO_PIN = "2580";
@@ -79,7 +80,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       if (incoming.length) {
         const o = incoming[0];
         const t = setTimeout(() => {
-          setToast(`New order #${o.id} from ${o.table ? `table ${o.table}` : `${o.name} (takeaway)`}`);
+          setToast(`New order #${o.id}: ${orderWhere(o)}`);
           setFresh((f) => new Set([...f, ...incoming.map((x) => x.id)]));
         }, 0);
         seen.current = ids;
@@ -124,6 +125,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </nav>
         <div className="hidden px-5 pt-6 md:block">
           <Link href="/menu?table=4" target="_blank" className="block text-sm text-bone/75 underline underline-offset-4 hover:text-bone">Open the guest menu</Link>
+          <Link href="/order" target="_blank" className="mt-2 block text-sm text-bone/75 underline underline-offset-4 hover:text-bone">Open online ordering</Link>
           <Link href="/" target="_blank" className="mt-2 block text-sm text-bone/75 underline underline-offset-4 hover:text-bone">View website</Link>
           <button onClick={() => confirmReset()} className="mt-6 block text-sm text-bone/60 hover:text-bone">Reset demo data</button>
           <button onClick={onLogout} className="mt-2 block text-sm text-bone/60 hover:text-bone">Sign out</button>

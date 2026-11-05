@@ -33,11 +33,18 @@ body { background: var(--color-bone); color: var(--color-char); font-family: var
 }
 
 @keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
-.sheet-in { animation: rise .32s cubic-bezier(.2,.9,.3,1) both; }
+@utility sheet-in { animation: rise .32s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes slide-l { from { transform: translateX(100%); } to { transform: none; } }
+@utility drawer-in { animation: slide-l .3s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes pop { 0% { transform: translateY(12px); opacity: 0 } 100% { transform: none; opacity: 1 } }
+.pop-in { animation: pop .25s ease both; }
 @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
 .fade-in { animation: fade .25s ease both; }
 @keyframes ping-once { 0% { box-shadow: 0 0 0 0 rgb(240 90 26 / .55) } 100% { box-shadow: 0 0 0 14px rgb(240 90 26 / 0) } }
 .ping { animation: ping-once 1.2s ease-out 3; }
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

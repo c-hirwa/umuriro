@@ -1,6 +1,7 @@
 "use client";
 
-import { setReservationStatus, type DB, type Reservation } from "@/lib/store";
+import { useState } from "react";
+import { setReservationStatus, type DB, type Reservation, type ReservationKind } from "@/lib/store";
 import { StatusPill } from "./Overview";
 import { H1, waNumber } from "./util";
 
@@ -15,13 +16,26 @@ function label(date: string) {
 export function Reservations({ db }: { db: DB }) {
   const t = new Date();
   const todayStr = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-  const upcoming = db.reservations.filter((r) => r.date >= todayStr).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const [kind, setKind] = useState<"all" | ReservationKind>("all");
+  const upcoming = db.reservations.filter((r) => r.date >= todayStr && (kind === "all" || (r.kind ?? "table") === kind)).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const days = [...new Set(upcoming.map((r) => r.date))];
   const guestsToday = upcoming.filter((r) => r.date === todayStr && r.status === "confirmed").reduce((s, r) => s + r.guests, 0);
 
   return (
     <>
-      <H1 aside={<p className="text-ash">{guestsToday} confirmed guests today</p>}>Bookings</H1>
+      <H1 aside={
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 rounded-full bg-mist p-1 text-sm font-semibold" role="radiogroup" aria-label="Filter bookings">
+            {(["all", "table", "brunch", "event", "private"] as const).map((k) => (
+              <button key={k} role="radio" aria-checked={kind === k} onClick={() => setKind(k)}
+                className={`rounded-full px-3 py-1.5 ${kind === k ? "bg-white shadow-sm" : "text-ash"}`}>
+                {k === "all" ? "All" : k === "table" ? "Tables" : k === "brunch" ? "Brunch" : k === "event" ? "Events" : "Private"}
+              </button>
+            ))}
+          </div>
+          <p className="text-ash">{guestsToday} confirmed guests today</p>
+        </div>
+      }>Bookings</H1>
       {days.length === 0 && <p className="text-ash">No upcoming bookings. New requests from the website appear here.</p>}
       <div className="space-y-8">
         {days.map((d) => (
@@ -37,8 +51,16 @@ export function Reservations({ db }: { db: DB }) {
   );
 }
 
+function KindPill({ r }: { r: Reservation }) {
+  const kind = r.kind ?? "table";
+  if (kind === "table") return null;
+  const label = kind === "brunch" ? "Brunch" : kind === "event" ? r.event ?? "Event" : `Private: ${r.event ?? "event"}`;
+  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${kind === "private" ? "bg-char text-bone" : "bg-ochre/30 text-char"}`}>{label}</span>;
+}
+
 function Card({ r }: { r: Reservation }) {
-  const msg = encodeURIComponent(`Hi ${r.name.split(" ")[0]}, this is Umuriro. Your table for ${r.guests} on ${r.date} at ${r.time} is confirmed. See you then!`);
+  const what = r.kind === "event" ? `your ${r.guests} places at ${r.event}` : r.kind === "brunch" ? `brunch for ${r.guests}` : r.kind === "private" ? `your ${r.event?.toLowerCase() ?? "event"} for ${r.guests}` : `your table for ${r.guests}`;
+  const msg = encodeURIComponent(`Hi ${r.name.split(" ")[0]}, this is Umuriro. ${what[0].toUpperCase() + what.slice(1)} on ${r.date} at ${r.time} is confirmed. See you then!`);
   return (
     <li className={`rounded-2xl bg-white p-4 ${r.status === "pending" ? "ring-2 ring-ember/60" : ""}`}>
       <div className="flex items-start gap-3">
@@ -46,7 +68,7 @@ function Card({ r }: { r: Reservation }) {
           <span className="font-display text-2xl font-black leading-none">{r.time}</span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2"><p className="font-bold">{r.name}</p><StatusPill s={r.status} /></div>
+          <div className="flex flex-wrap items-center gap-2"><p className="font-bold">{r.name}</p><StatusPill s={r.status} /><KindPill r={r} /></div>
           <p className="text-sm text-ash">{r.guests} {r.guests === 1 ? "guest" : "guests"}, {r.phone}</p>
           {r.note && <p className="mt-1 text-sm">“{r.note}”</p>}
         </div>

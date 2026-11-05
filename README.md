@@ -8,9 +8,15 @@ Website, QR ordering menu and staff dashboard for a fictional grill restaurant i
 
 | Route | What it is |
 |---|---|
-| `/` | Restaurant website: story, signature dishes, table booking, hours and location |
-| `/menu` | The menu that opens from a QR code. `/menu?table=7` fills in the table. Guests order and track their order live |
-| `/admin` | Staff dashboard (demo PIN **2580**): today's sales, live order board, bookings, sold-out switches, printable table QR codes |
+| `/` | Restaurant website: story, signature dishes, brunch, what's on, reviews, table booking, hours, FAQ |
+| `/menu` | The menu that opens from a QR code. `/menu?table=7` fills in the table. Guests order and track their order live. "Website" button goes back to the site |
+| `/order` | Online ordering with a cart that persists across pages: search, quick add, dish options, pickup or delivery |
+| `/order/checkout` | Delivery zones and fees, free delivery threshold, ASAP or scheduled time, MoMo / card / cash |
+| `/order/track?id=` | Live status for an online order (received, on the grill, on its way, delivered) |
+| `/brunch` | Weekend brunch menu, packages (bottomless, family board) and brunch booking (Sat and Sun only) |
+| `/events` | Weekly and monthly events, a five-week calendar and RSVP / booking for each date |
+| `/private-events` | Spaces, set menus, catering and an enquiry form |
+| `/admin` | Staff dashboard (demo PIN **2580**): sales, live order board (tables, pickup, delivery), bookings filtered by table / brunch / event / private, sold-out switches, table QR codes |
 
 ## Run it
 
@@ -34,6 +40,8 @@ The PIN screen is a demo gate only. A real deployment needs server-side auth.
 
 ## Customising for a client
 
-- `lib/data.ts`: name, address, phone, number of tables, menu, prices, opening hours, photos
+- `lib/data.ts`: name, address, phone, number of tables, menu, prices, opening hours, delivery zones and fees, photos
+- `lib/events.ts`: recurring events (weekday, or nth / last weekday of the month), prices and capacity
+- `lib/cart.ts`: the two carts (table and online), kept in localStorage
 - Photos are free images from [Unsplash](https://unsplash.com/license), loaded from their CDN at the right size by `photo()`.
   Swap the IDs for the client's own photos before launch.
